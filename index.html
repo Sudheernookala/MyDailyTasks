@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="theme-color" content="#0f0f12">
 <title>Taskr</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <style>
   @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;600;700;800&display=swap');
 
@@ -226,6 +231,45 @@
   .notify-banner { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); background: var(--surface); border: 1px solid var(--accent); border-radius: 14px; padding: 10px 16px; font-size: 13px; font-weight: 700; color: var(--accent); z-index: 400; display: flex; align-items: center; gap: 8px; max-width: calc(480px - 24px); box-shadow: 0 8px 32px rgba(0,0,0,0.5); opacity: 0; transition: opacity 0.3s; pointer-events: none; }
   .notify-banner.show { opacity: 1; }
 
+  /* DUE BADGE */
+  .due-badge { font-family: 'DM Mono', monospace; font-size: 10px; padding: 3px 8px; border-radius: 20px; background: var(--purple-bg); color: var(--purple); white-space: nowrap; }
+  .due-badge.overdue { background: var(--danger-bg); color: var(--danger); }
+  .due-badge.ringing { background: var(--danger); color: #fff; animation: pulse 1s infinite; }
+  .task-card.ringing { border-color: var(--danger); }
+  .task-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  @keyframes pulse { 50% { opacity: 0.55; } }
+
+  /* REMINDER INPUTS */
+  .reminder-row { display: flex; gap: 10px; }
+  .reminder-row .form-input { flex: 1; min-width: 0; }
+  .quick-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .chip { font-family: 'DM Mono', monospace; font-size: 11px; padding: 7px 11px; border-radius: 20px; border: 1px solid var(--border); background: var(--surface2); color: var(--text-dim); cursor: pointer; }
+  .chip:active { transform: scale(0.95); }
+  .chip.clear { color: var(--danger); }
+  .chip.on { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  .form-hint { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--text-muted); line-height: 1.5; margin-top: 6px; }
+
+  /* ALARM EXTRAS */
+  .alarm-box { max-height: 92dvh; overflow-y: auto; }
+  .alarm-box.task { border-color: var(--danger); box-shadow: 0 0 0 4px var(--danger-bg); }
+  .alarm-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .alarm-btns .wide { grid-column: 1 / -1; }
+  .alarm-btn.start { background: var(--inprog-bg); color: var(--inprog); border: 1px solid var(--inprog); }
+  .alarm-btn.resched { background: var(--purple-bg); color: var(--purple); border: 1px solid var(--purple); }
+  .resched-panel { display: none; margin-top: 16px; text-align: left; border-top: 1px solid var(--border); padding-top: 14px; }
+  .resched-panel.open { display: block; }
+  .sound-hint { display: none; background: var(--danger-bg); color: var(--danger); font-family: 'DM Mono', monospace; font-size: 12px; padding: 8px 10px; border-radius: var(--radius-sm); margin-bottom: 14px; }
+  .sound-hint.show { display: block; }
+  .alarm-queue { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--text-muted); margin-top: 12px; }
+
+  /* ALARM CHIP + SETTINGS */
+  .header-right { display: flex; align-items: center; gap: 6px; }
+  .alarm-chip { font-family: 'DM Mono', monospace; font-size: 11px; padding: 5px 10px; border-radius: 20px; border: 1px solid var(--danger); background: var(--danger-bg); color: var(--danger); cursor: pointer; }
+  .alarm-chip.ok { border-color: var(--border); background: var(--surface); color: var(--accent); }
+  .setting-row { display: flex; align-items: center; gap: 12px; padding: 12px 13px; border-radius: var(--radius-sm); border: 1px solid var(--border); margin-bottom: 7px; background: var(--surface2); }
+  .setting-row > div { flex: 1; }
+  .setting-note { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--text-muted); line-height: 1.6; margin-top: 12px; }
+
   @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
   @keyframes pop { 0% { transform: scale(1); } 40% { transform: scale(1.06); } 100% { transform: scale(1); } }
   .pop { animation: pop 0.25s ease-out; }
@@ -236,7 +280,10 @@
   <header>
     <div class="header-top">
       <div class="logo">task<span>r</span></div>
-      <div class="date-badge" id="headerDate"></div>
+      <div class="header-right">
+        <button class="alarm-chip" id="alarmChip">🔇 Set up alarms</button>
+        <div class="date-badge" id="headerDate"></div>
+      </div>
     </div>
     <div class="tabs">
       <button class="tab active" data-tab="tasks">Tasks</button>
@@ -274,6 +321,21 @@
         <div class="status-opt" data-val="done">Done</div>
       </div>
     </div>
+    <div class="form-group">
+      <label class="form-label">Remind me at (optional)</label>
+      <div class="reminder-row">
+        <input class="form-input" id="tDueDate" type="date">
+        <input class="form-input" id="tDueTime" type="time">
+      </div>
+      <div class="quick-chips" id="taskQuickChips">
+        <button type="button" class="chip" data-quick="15">+15 min</button>
+        <button type="button" class="chip" data-quick="60">+1 hour</button>
+        <button type="button" class="chip" data-quick="180">+3 hours</button>
+        <button type="button" class="chip" data-quick="tom9">Tomorrow 9 AM</button>
+        <button type="button" class="chip clear" data-quick="clear">Clear</button>
+      </div>
+      <div class="form-hint">At this time a popup opens and the alarm keeps ringing until you snooze, reschedule or change the status.</div>
+    </div>
     <div class="modal-actions">
       <button class="btn btn-cancel" id="taskCancelBtn">Cancel</button>
       <button class="btn btn-save" id="taskSaveBtn">Save Task</button>
@@ -308,15 +370,7 @@
         <input class="form-input" id="hTime" type="time" value="08:00">
       </div>
     </div>
-    <div class="form-group">
-      <label class="form-label">Reminder Window (mins after alarm)</label>
-      <select class="form-select" id="hWindow">
-        <option value="15">15 minutes</option>
-        <option value="30" selected>30 minutes</option>
-        <option value="60">1 hour</option>
-        <option value="120">2 hours</option>
-      </select>
-    </div>
+    <div class="form-hint" style="margin-top:-4px">The alarm keeps ringing until you mark it done, snooze it or skip today.</div>
     <div class="modal-actions">
       <button class="btn btn-cancel" id="habitCancelBtn">Cancel</button>
       <button class="btn btn-save" id="habitSaveBtn">Save Habit</button>
@@ -336,15 +390,51 @@
 
 <!-- ALARM POPUP -->
 <div class="alarm-overlay" id="alarmOverlay">
-  <div class="alarm-box">
+  <div class="alarm-box" id="alarmBox">
     <div class="alarm-icon">⏰</div>
-    <div class="alarm-title">Habit Reminder</div>
-    <div class="alarm-habit" id="alarmHabitName"></div>
-    <div class="alarm-desc" id="alarmHabitDesc"></div>
+    <div class="alarm-title" id="alarmKind">Task Reminder</div>
+    <div class="alarm-habit" id="alarmName"></div>
+    <div class="alarm-desc" id="alarmDesc"></div>
     <div class="alarm-time-badge" id="alarmTimeBadge"></div>
-    <div class="alarm-btns">
-      <button class="alarm-btn snooze" id="alarmSnoozeBtn">Snooze 10m</button>
-      <button class="alarm-btn done" id="alarmDoneBtn">Mark Done ✓</button>
+    <div class="sound-hint" id="soundHint">🔇 Sound blocked by the browser. Tap here to play the alarm.</div>
+    <div class="alarm-btns" id="alarmBtns"></div>
+    <div class="resched-panel" id="reschedPanel">
+      <label class="form-label">Reschedule to</label>
+      <div class="quick-chips" id="reschedChips">
+        <button type="button" class="chip" data-quick="15">+15 min</button>
+        <button type="button" class="chip" data-quick="60">+1 hour</button>
+        <button type="button" class="chip" data-quick="180">+3 hours</button>
+        <button type="button" class="chip" data-quick="tom9">Tomorrow 9 AM</button>
+      </div>
+      <div class="reminder-row" style="margin-top:10px">
+        <input class="form-input" id="rDate" type="date">
+        <input class="form-input" id="rTime" type="time">
+      </div>
+      <button class="btn btn-save" id="reschedSaveBtn" style="width:100%;margin-top:10px">Set new time</button>
+    </div>
+    <div class="alarm-queue" id="alarmQueueInfo"></div>
+  </div>
+</div>
+
+<!-- ALARM SETTINGS SHEET -->
+<div class="sheet" id="alarmSheet">
+  <div class="sheet-inner">
+    <div class="sheet-title">Alarm Settings</div>
+    <div class="setting-row">
+      <div><div class="sheet-opt-label">Alarm sound</div><div class="sheet-opt-sub" id="setSoundSub"></div></div>
+      <button class="chip" id="setSoundBtn">Test</button>
+    </div>
+    <div class="setting-row">
+      <div><div class="sheet-opt-label">Phone notifications</div><div class="sheet-opt-sub" id="setNotifSub"></div></div>
+      <button class="chip" id="setNotifBtn">Allow</button>
+    </div>
+    <div class="setting-row">
+      <div><div class="sheet-opt-label">Keep screen on</div><div class="sheet-opt-sub">Most reliable while charging</div></div>
+      <button class="chip" id="setWakeBtn">Off</button>
+    </div>
+    <div class="setting-note">
+      ⚠️ A web app can only ring while it is open. If you close it or the phone kills it in the background, the alarm cannot play.
+      For best results: add Taskr to your home screen, allow notifications, and leave it open.
     </div>
   </div>
 </div>
@@ -372,16 +462,21 @@ let editingTaskId = null;
 let editingHabitId = null;
 let selectedStatus = 'todo';
 let statusTargetId = null;
-let alarmQueue    = [];
-let currentAlarmHabitId = null;
-let alarmTimeouts = {};
-let snoozeTimeouts = {};
+
+const HABIT_ALARM_KEY = 'taskr_habit_alarm_v1';
+const SETTINGS_KEY    = 'taskr_settings_v1';
+let habitAlarm = {};          // { habitId: { date, snoozeUntil, skipped } }
+let settings   = { wake: false };
 
 function load() {
   try { tasks  = JSON.parse(localStorage.getItem(TASKS_KEY))  || []; } catch { tasks  = []; }
   try { habits = JSON.parse(localStorage.getItem(HABITS_KEY)) || []; } catch { habits = []; }
   try { logs   = JSON.parse(localStorage.getItem(LOGS_KEY))   || {}; } catch { logs   = {}; }
+  try { habitAlarm = JSON.parse(localStorage.getItem(HABIT_ALARM_KEY)) || {}; } catch { habitAlarm = {}; }
+  try { settings = Object.assign({ wake:false }, JSON.parse(localStorage.getItem(SETTINGS_KEY))); } catch {}
 }
+function saveHabitAlarm() { localStorage.setItem(HABIT_ALARM_KEY, JSON.stringify(habitAlarm)); }
+function saveSettings()   { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }
 function saveTasks()  { localStorage.setItem(TASKS_KEY,  JSON.stringify(tasks));  }
 function saveHabits() { localStorage.setItem(HABITS_KEY, JSON.stringify(habits)); }
 function saveLogs()   { localStorage.setItem(LOGS_KEY,   JSON.stringify(logs));   }
@@ -412,6 +507,37 @@ function formatDateKey(key) {
 
 function formatTime(ts) {
   return new Date(ts).toLocaleTimeString('en-US',{ hour:'2-digit', minute:'2-digit', hour12:true });
+}
+
+function formatDue(ts) {
+  const d = new Date(ts);
+  const time = d.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit', hour12:true });
+  const today = new Date(); today.setHours(0,0,0,0);
+  const day = new Date(d); day.setHours(0,0,0,0);
+  const diff = Math.round((day - today) / 86400000);
+  if (diff === 0)  return 'Today ' + time;
+  if (diff === 1)  return 'Tomorrow ' + time;
+  if (diff === -1) return 'Yesterday ' + time;
+  return d.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' }) + ' ' + time;
+}
+
+function setDateTimeInputs(dateId, timeId, d) {
+  document.getElementById(dateId).value = d ? dateKeyFor(d) : '';
+  document.getElementById(timeId).value = d ? `${pad(d.getHours())}:${pad(d.getMinutes())}` : '';
+}
+
+// Date only -> 9:00; time only -> today. Returns a timestamp or null.
+function readDateTimeInputs(dateId, timeId) {
+  const dv = document.getElementById(dateId).value, tv = document.getElementById(timeId).value;
+  if (!dv && !tv) return null;
+  const [y, m, d] = (dv || todayKey()).split('-').map(Number);
+  const [hh, mm]  = (tv || '09:00').split(':').map(Number);
+  return new Date(y, m - 1, d, hh, mm, 0, 0).getTime();
+}
+
+function quickTime(q) {
+  if (q === 'tom9') { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0); return d; }
+  const d = new Date(Date.now() + parseInt(q) * 60000); d.setSeconds(0, 0); return d;
 }
 
 function getDatesInRange(days) {
@@ -489,97 +615,337 @@ function completeHabit(habitId) {
   if (!logs[habitId]) logs[habitId] = {};
   logs[habitId][key] = 'done';
   saveLogs();
+  checkAlarms();
   render();
   showNotify('✅ Habit marked complete!');
 }
 
 /* ════════════════════════════════════════
    ALARM SYSTEM
+   One engine for tasks and habits. Every few seconds it checks what is due.
+   Anything due goes into ringQueue and keeps ringing (sound + vibration +
+   popup + repeated phone notification) until the user acts on it.
 ═════════════════════════════════════════ */
+const TASK_SNOOZE_MIN  = 5;
+const HABIT_SNOOZE_MIN = 10;
+let ringQueue    = [];      // [{ kind:'task'|'habit', id }]
+let currentAlarm = null;
+let lastNotifyAt = {};
+let swReg        = null;
+let wakeLock     = null;
+
+/* ---------- Sound: a generated looping beep (no file needed) ---------- */
+function makeAlarmWav() {
+  const rate = 22050, dur = 1.6, n = Math.floor(rate * dur);
+  const buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+  const w = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  w(0,'RIFF'); v.setUint32(4, 36 + n * 2, true); w(8,'WAVE'); w(12,'fmt ');
+  v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true);
+  v.setUint32(24,rate,true); v.setUint32(28,rate*2,true); v.setUint16(32,2,true); v.setUint16(34,16,true);
+  w(36,'data'); v.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) {
+    const t = i / rate, slot = Math.floor(t / 0.2), local = t - slot * 0.2;
+    let s = 0;
+    if (slot < 6 && slot % 2 === 0) {              // three 0.2s beeps, then a pause
+      const f = slot === 2 ? 1320 : 990;
+      const env = Math.min(1, local / 0.01, (0.2 - local) / 0.01);
+      s = (Math.sin(2*Math.PI*f*t) * 0.7 + Math.sin(2*Math.PI*f*2*t) * 0.2) * env;
+    }
+    v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, s)) * 32767, true);
+  }
+  return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+}
+const alarmAudio = new Audio(makeAlarmWav());
+alarmAudio.loop = true;
+let audioUnlocked = false;
+
+// Mobile browsers only allow sound after the user has touched the page once.
+function unlockAudio() {
+  if (audioUnlocked) return;
+  alarmAudio.muted = true;
+  alarmAudio.play().then(() => {
+    audioUnlocked = true;
+    if (!ringQueue.length) { alarmAudio.pause(); alarmAudio.currentTime = 0; }
+    alarmAudio.muted = false;
+    updateAlarmChip();
+  }).catch(() => { alarmAudio.muted = false; });
+}
+['pointerdown', 'touchend', 'keydown'].forEach(ev =>
+  document.addEventListener(ev, () => { unlockAudio(); if (ringQueue.length) startRinging(); }, { passive: true }));
+
+let vibTimer = null;
+function vibrate() { try { navigator.vibrate && navigator.vibrate([600, 250, 600, 250, 600]); } catch {} }
+function startRinging() {
+  alarmAudio.muted = false;
+  if (alarmAudio.paused) {
+    alarmAudio.play()
+      .then(() => { audioUnlocked = true; document.getElementById('soundHint').classList.remove('show'); updateAlarmChip(); })
+      .catch(() => document.getElementById('soundHint').classList.add('show'));
+  }
+  if (!vibTimer) { vibrate(); vibTimer = setInterval(vibrate, 2500); }
+}
+function stopRinging() {
+  alarmAudio.pause(); alarmAudio.currentTime = 0;
+  clearInterval(vibTimer); vibTimer = null;
+  try { navigator.vibrate && navigator.vibrate(0); } catch {}
+  document.getElementById('soundHint').classList.remove('show');
+}
+
+/* ---------- What is due ---------- */
+function habitFireAt(h) {
+  if (!isDueToday(h) || isCompletedToday(h)) return null;
+  const st = habitAlarm[h.id];
+  if (st && st.date === todayKey()) {
+    if (st.skipped) return null;
+    if (st.snoozeUntil) return st.snoozeUntil;
+  }
+  const [hh, mm] = h.alarmTime.split(':').map(Number);
+  const d = new Date(); d.setHours(hh, mm, 0, 0);
+  return d.getTime();
+}
+
+function isStillRinging(item) {
+  const now = Date.now();
+  if (item.kind === 'task') {
+    const t = tasks.find(t => t.id === item.id);
+    return !!t && t.status !== 'done' && t.alarm === 'ringing' && t.dueAt <= now;
+  }
+  const h = habits.find(h => h.id === item.id);
+  if (!h) return false;
+  const at = habitFireAt(h);
+  return at !== null && at <= now;
+}
+
+function checkAlarms() {
+  const now = Date.now();
+  let changed = false;
+  tasks.forEach(t => {
+    if (!t.dueAt || t.status === 'done' || t.alarm === 'handled') return;
+    if (t.dueAt <= now) {
+      if (t.alarm !== 'ringing') { t.alarm = 'ringing'; changed = true; }
+      enqueue('task', t.id);
+    }
+  });
+  habits.forEach(h => {
+    const at = habitFireAt(h);
+    if (at !== null && at <= now) enqueue('habit', h.id);
+  });
+  ringQueue = ringQueue.filter(isStillRinging);
+  if (changed) { saveTasks(); render(); }
+  refreshAlarmUI();
+}
+
+function enqueue(kind, id) {
+  if (!ringQueue.some(q => q.kind === kind && q.id === id)) ringQueue.push({ kind, id });
+}
+
+/* ---------- Popup ---------- */
+function alarmText(item) {
+  if (item.kind === 'task') {
+    const t = tasks.find(t => t.id === item.id);
+    return t ? { title: t.title, body: t.desc || 'Your scheduled task is due now.', time: formatDue(t.dueAt) } : null;
+  }
+  const h = habits.find(h => h.id === item.id);
+  return h ? { title: h.title, body: h.desc || 'Time to complete your habit!', time: h.alarmTime } : null;
+}
+
+function refreshAlarmUI() {
+  if (!ringQueue.length) {
+    currentAlarm = null;
+    closeAlarmPopup();
+    stopRinging();
+    return;
+  }
+  const first = ringQueue[0];
+  if (!currentAlarm || currentAlarm.kind !== first.kind || currentAlarm.id !== first.id) showAlarm(first);
+  document.getElementById('alarmQueueInfo').textContent =
+    ringQueue.length > 1 ? `${ringQueue.length - 1} more alarm${ringQueue.length > 2 ? 's' : ''} waiting` : '';
+  startRinging();
+  systemNotify();
+}
+
+function showAlarm(item) {
+  const txt = alarmText(item); if (!txt) return;
+  currentAlarm = item;
+  const isTask = item.kind === 'task';
+  document.getElementById('alarmBox').classList.toggle('task', isTask);
+  document.getElementById('alarmKind').textContent = isTask ? 'Task Reminder' : 'Habit Reminder';
+  document.getElementById('alarmName').textContent = txt.title;
+  document.getElementById('alarmDesc').textContent = txt.body;
+  document.getElementById('alarmTimeBadge').textContent = '⏰ ' + txt.time;
+  document.getElementById('reschedPanel').classList.remove('open');
+  document.getElementById('alarmBtns').innerHTML = isTask
+    ? `<button class="alarm-btn snooze" data-act="snooze">Snooze ${TASK_SNOOZE_MIN}m</button>
+       <button class="alarm-btn resched" data-act="resched-open">Reschedule</button>
+       <button class="alarm-btn start" data-act="start">Start ▶</button>
+       <button class="alarm-btn done" data-act="done">Done ✓</button>`
+    : `<button class="alarm-btn snooze" data-act="snooze">Snooze ${HABIT_SNOOZE_MIN}m</button>
+       <button class="alarm-btn resched" data-act="skip">Skip today</button>
+       <button class="alarm-btn done wide" data-act="done">Mark Done ✓</button>`;
+  document.getElementById('alarmOverlay').classList.add('open');
+}
+
+function closeAlarmPopup() { document.getElementById('alarmOverlay').classList.remove('open'); }
+
+document.getElementById('alarmBtns').addEventListener('click', e => {
+  const btn = e.target.closest('[data-act]'); if (!btn) return;
+  if (btn.dataset.act === 'resched-open') {
+    const d = new Date(Date.now() + 60 * 60000);
+    setDateTimeInputs('rDate', 'rTime', d);
+    document.getElementById('reschedPanel').classList.add('open');
+    return;
+  }
+  alarmAction(btn.dataset.act);
+});
+document.getElementById('reschedChips').addEventListener('click', e => {
+  const c = e.target.closest('[data-quick]'); if (!c) return;
+  setDateTimeInputs('rDate', 'rTime', quickTime(c.dataset.quick));
+});
+document.getElementById('reschedSaveBtn').addEventListener('click', () => {
+  const at = readDateTimeInputs('rDate', 'rTime');
+  if (!at || at <= Date.now()) { showNotify('⚠️ Pick a time in the future'); return; }
+  alarmAction('resched', currentAlarm, at);
+});
+document.getElementById('soundHint').addEventListener('click', startRinging);
+
+function alarmAction(action, item = currentAlarm, payload) {
+  if (!item) return;
+  let msg = '';
+  if (item.kind === 'task') {
+    const t = tasks.find(t => t.id === item.id);
+    if (t) {
+      if (action === 'done')  { t.status = 'done';   t.alarm = 'handled'; msg = '✅ Task done'; }
+      if (action === 'start') { t.status = 'inprog'; t.alarm = 'handled'; msg = '▶️ Task in progress'; }
+      if (action === 'snooze' || action === 'resched') {
+        t.dueAt = action === 'snooze' ? Date.now() + TASK_SNOOZE_MIN * 60000 : payload;
+        t.alarm = 'pending';
+        t.dateKey = dateKeyFor(new Date(t.dueAt));
+        msg = action === 'snooze' ? `💤 Snoozed ${TASK_SNOOZE_MIN} min` : '📅 Rescheduled to ' + formatDue(t.dueAt);
+      }
+      saveTasks();
+    }
+  } else {
+    const today = todayKey();
+    if (action === 'done') {
+      if (!logs[item.id]) logs[item.id] = {};
+      logs[item.id][today] = 'done'; saveLogs(); msg = '✅ Habit done';
+    }
+    if (action === 'snooze') { habitAlarm[item.id] = { date: today, snoozeUntil: Date.now() + HABIT_SNOOZE_MIN * 60000 }; msg = `💤 Snoozed ${HABIT_SNOOZE_MIN} min`; }
+    if (action === 'skip')   { habitAlarm[item.id] = { date: today, skipped: true }; msg = '⏭️ Skipped for today'; }
+    saveHabitAlarm();
+  }
+  closeSystemNotification(item);
+  ringQueue = ringQueue.filter(q => !(q.kind === item.kind && q.id === item.id));
+  delete lastNotifyAt[item.kind + ':' + item.id];
+  currentAlarm = null;
+  render();
+  refreshAlarmUI();
+  if (msg) showNotify(msg);
+}
+
+/* ---------- Phone notifications (via service worker) ---------- */
 function requestNotifPerms() {
   if ('Notification' in window && Notification.permission === 'default') {
-    Notification.requestPermission();
+    Notification.requestPermission().then(updateAlarmChip);
   }
 }
 
-function scheduleAllAlarms() {
-  // Clear existing
-  Object.values(alarmTimeouts).forEach(clearTimeout);
-  alarmTimeouts = {};
-  habits.forEach(h => scheduleHabitAlarm(h));
-}
-
-function scheduleHabitAlarm(habit) {
-  if (isCompletedToday(habit)) return;
-  const [hh, mm] = habit.alarmTime.split(':').map(Number);
-  const now = new Date();
-  const alarm = new Date();
-  alarm.setHours(hh, mm, 0, 0);
-  if (alarm <= now) return; // past for today
-  const delay = alarm - now;
-  alarmTimeouts[habit.id] = setTimeout(() => triggerAlarm(habit.id), delay);
-
-  // Also schedule snooze reminders within window
-  const windowMs = (habit.reminderWindow || 30) * 60 * 1000;
-  const snoozeTick = Math.min(windowMs / 3, 10 * 60 * 1000);
-  const snooze1 = alarm.getTime() + snoozeTick;
-  const snooze2 = alarm.getTime() + snoozeTick * 2;
-  [snooze1, snooze2].forEach((t, i) => {
-    const d = t - Date.now();
-    if (d > 0) {
-      const key = habit.id + '_s' + i;
-      snoozeTimeouts[key] = setTimeout(() => {
-        if (!isCompletedToday(habit)) triggerAlarm(habit.id);
-      }, d);
+// While the app is in the background, re-send the notification every minute
+// so the phone keeps buzzing until the user acts.
+function systemNotify() {
+  if (!document.hidden || !('Notification' in window) || Notification.permission !== 'granted') return;
+  const now = Date.now();
+  ringQueue.forEach(item => {
+    const k = item.kind + ':' + item.id;
+    if (lastNotifyAt[k] && now - lastNotifyAt[k] < 60000) return;
+    lastNotifyAt[k] = now;
+    const txt = alarmText(item); if (!txt) return;
+    const snoozeMin = item.kind === 'task' ? TASK_SNOOZE_MIN : HABIT_SNOOZE_MIN;
+    const opts = {
+      body: txt.body, tag: 'taskr-' + k, renotify: true, requireInteraction: true,
+      vibrate: [600, 250, 600, 250, 600], data: item, icon: 'icon-192.png', badge: 'icon-192.png',
+      actions: [{ action: 'done', title: '✓ Done' }, { action: 'snooze', title: `Snooze ${snoozeMin}m` }]
+    };
+    if (swReg) swReg.showNotification('⏰ ' + txt.title, opts).catch(() => {});
+    else {
+      try { const n = new Notification('⏰ ' + txt.title, { body: txt.body, tag: opts.tag, requireInteraction: true });
+            n.onclick = () => { window.focus(); n.close(); }; } catch {}
     }
   });
 }
 
-function triggerAlarm(habitId) {
-  const habit = habits.find(h => h.id === habitId);
-  if (!habit || isCompletedToday(habit)) return;
-
-  // Browser notification
-  if ('Notification' in window && Notification.permission === 'granted') {
-    const n = new Notification('⏰ ' + habit.title, {
-      body: habit.desc || 'Time to complete your habit!',
-      icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">⏰</text></svg>'
-    });
-    n.onclick = () => { window.focus(); openAlarmPopup(habitId); n.close(); };
-    setTimeout(() => n.close(), 8000);
-  }
-
-  openAlarmPopup(habitId);
+function closeSystemNotification(item) {
+  if (!swReg || !swReg.getNotifications) return;
+  swReg.getNotifications({ tag: 'taskr-' + item.kind + ':' + item.id })
+    .then(list => list.forEach(n => n.close())).catch(() => {});
 }
 
-function openAlarmPopup(habitId) {
-  const habit = habits.find(h => h.id === habitId);
-  if (!habit) return;
-  currentAlarmHabitId = habitId;
-  document.getElementById('alarmHabitName').textContent = habit.title;
-  document.getElementById('alarmHabitDesc').textContent = habit.desc || 'Complete your daily habit';
-  document.getElementById('alarmTimeBadge').textContent = '⏰ ' + habit.alarmTime;
-  document.getElementById('alarmOverlay').classList.add('open');
+function handleExternalAction(d) {
+  if (!d || !d.kind || !d.id) return;
+  checkAlarms();
+  if (d.action === 'done' || d.action === 'snooze') alarmAction(d.action, { kind: d.kind, id: d.id });
 }
 
-function closeAlarmPopup() {
-  document.getElementById('alarmOverlay').classList.remove('open');
-  currentAlarmHabitId = null;
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  navigator.serviceWorker.register('sw.js').then(r => { swReg = r; }).catch(() => {});
+  navigator.serviceWorker.addEventListener('message', e => {
+    if (e.data && e.data.type === 'alarm-action') handleExternalAction(e.data);
+  });
 }
 
-document.getElementById('alarmDoneBtn').addEventListener('click', () => {
-  if (currentAlarmHabitId) { completeHabit(currentAlarmHabitId); }
-  closeAlarmPopup();
+/* ---------- Keep screen awake (optional) ---------- */
+async function applyWakeLock() {
+  if (!('wakeLock' in navigator)) return;
+  if (settings.wake && !document.hidden && !wakeLock) {
+    try { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); } catch {}
+  } else if (!settings.wake && wakeLock) { wakeLock.release(); wakeLock = null; }
+}
+
+/* ---------- Header chip + settings sheet ---------- */
+function updateAlarmChip() {
+  const chip = document.getElementById('alarmChip');
+  const notifOk = !('Notification' in window) || Notification.permission === 'granted';
+  const ok = audioUnlocked && notifOk;
+  chip.classList.toggle('ok', ok);
+  chip.textContent = ok ? '🔔 Alarms on' : (audioUnlocked ? '🔔 Allow alerts' : '🔇 Tap to arm');
+  const notif = !('Notification' in window) ? 'Not supported here'
+              : Notification.permission === 'granted' ? 'Allowed ✓'
+              : Notification.permission === 'denied' ? 'Blocked – enable in phone settings' : 'Not allowed yet';
+  document.getElementById('setNotifSub').textContent = notif;
+  document.getElementById('setSoundSub').textContent = audioUnlocked ? 'Ready ✓' : 'Tap Test to enable';
+  const wakeBtn = document.getElementById('setWakeBtn');
+  wakeBtn.textContent = settings.wake ? 'On' : 'Off';
+  wakeBtn.classList.toggle('on', settings.wake);
+}
+
+document.getElementById('alarmChip').addEventListener('click', () => {
+  updateAlarmChip();
+  document.getElementById('alarmSheet').classList.add('open');
+});
+document.getElementById('alarmSheet').addEventListener('click', e => {
+  if (e.target.id === 'alarmSheet') document.getElementById('alarmSheet').classList.remove('open');
+});
+document.getElementById('setSoundBtn').addEventListener('click', () => {
+  if (ringQueue.length) return;
+  alarmAudio.muted = false;
+  alarmAudio.play().then(() => { audioUnlocked = true; updateAlarmChip(); }).catch(() => {});
+  vibrate();
+  setTimeout(() => { if (!ringQueue.length) { alarmAudio.pause(); alarmAudio.currentTime = 0; } }, 3200);
+});
+document.getElementById('setNotifBtn').addEventListener('click', () => {
+  if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission().then(updateAlarmChip);
+  else if ('Notification' in window && Notification.permission === 'granted' && swReg)
+    swReg.showNotification('🔔 Taskr notifications work', { body: 'You will see alarms like this.', icon: 'icon-192.png' });
+});
+document.getElementById('setWakeBtn').addEventListener('click', () => {
+  settings.wake = !settings.wake; saveSettings(); applyWakeLock(); updateAlarmChip();
 });
 
-document.getElementById('alarmSnoozeBtn').addEventListener('click', () => {
-  const id = currentAlarmHabitId;
-  closeAlarmPopup();
-  if (id) {
-    showNotify('💤 Snoozed for 10 minutes');
-    setTimeout(() => triggerAlarm(id), 10 * 60 * 1000);
-  }
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) { lastNotifyAt = {}; applyWakeLock(); }
+  checkAlarms();
 });
+window.addEventListener('focus', checkAlarms);
 
 /* ════════════════════════════════════════
    NOTIFY BANNER
@@ -630,15 +996,16 @@ function renderTasksView() {
       <div class="stat-card"><div class="stat-num" style="color:var(--todo)">${todo}</div><div class="stat-label">To Do</div></div>
     </div>
     <div class="filter-bar">
-      ${['all','today','todo','inprog','done'].map(f =>
+      ${['all','today','scheduled','todo','inprog','done'].map(f =>
         `<button class="filter-btn${currentFilter===f?' active':''}" data-filter="${f}">${
-          {all:'All',today:'Today',todo:'To Do',inprog:'In Progress',done:'Done'}[f]
+          {all:'All',today:'Today',scheduled:'⏰ Scheduled',todo:'To Do',inprog:'In Progress',done:'Done'}[f]
         }</button>`).join('')}
     </div>`;
 
   const today = todayKey();
   const filtered = tasks.filter(t => {
     if (currentFilter==='today') return t.dateKey===today;
+    if (currentFilter==='scheduled') return !!t.dueAt && t.status!=='done';
     if (currentFilter==='todo')  return t.status==='todo';
     if (currentFilter==='inprog')return t.status==='inprog';
     if (currentFilter==='done')  return t.status==='done';
@@ -652,7 +1019,7 @@ function renderTasksView() {
     filtered.forEach(t => { if (!groups[t.dateKey]) groups[t.dateKey]=[]; groups[t.dateKey].push(t); });
     const keys = Object.keys(groups).sort((a,b)=>b.localeCompare(a));
     keys.forEach(key => {
-      const day = groups[key].sort((a,b)=>b.createdAt-a.createdAt);
+      const day = groups[key].sort((a,b)=>((a.dueAt||Infinity)-(b.dueAt||Infinity)) || (b.createdAt-a.createdAt));
       html += `<div class="date-group" style="margin-bottom:20px">
         <div class="section-head"><div class="section-head-text">${formatDateKey(key)}</div><div class="section-head-line"></div><div class="section-head-count">${day.length}</div></div>`;
       day.forEach((t,i) => { html += renderTaskCard(t, i); });
@@ -679,7 +1046,12 @@ function renderTasksView() {
 
 function renderTaskCard(t, i) {
   const lbl = {todo:'To Do',inprog:'In Progress',done:'Done'}[t.status];
-  return `<div class="task-card" data-status="${t.status}" style="animation-delay:${i*0.04}s">
+  let due = '';
+  if (t.dueAt && t.status !== 'done') {
+    const cls = t.alarm === 'ringing' ? 'ringing' : (t.dueAt <= Date.now() ? 'overdue' : '');
+    due = `<span class="due-badge ${cls}">⏰ ${formatDue(t.dueAt)}</span>`;
+  }
+  return `<div class="task-card${t.alarm==='ringing' && t.status!=='done' ? ' ringing' : ''}" data-status="${t.status}" style="animation-delay:${i*0.04}s">
     <div class="task-top">
       <div class="task-title">${esc(t.title)}</div>
       <div class="task-actions">
@@ -693,7 +1065,10 @@ function renderTaskCard(t, i) {
     </div>
     ${t.desc ? `<div class="task-desc">${esc(t.desc)}</div>` : ''}
     <div class="task-footer">
-      <div class="status-pill" data-status="${t.status}" data-id="${t.id}">${lbl}</div>
+      <div class="task-meta">
+        <div class="status-pill" data-status="${t.status}" data-id="${t.id}">${lbl}</div>
+        ${due}
+      </div>
       <div class="task-time">${formatTime(t.createdAt)}</div>
     </div>
   </div>`;
@@ -882,6 +1257,7 @@ function openAddTaskModal() {
   document.getElementById('taskModalTitle').textContent = 'New Task';
   document.getElementById('tTitle').value = '';
   document.getElementById('tDesc').value = '';
+  setDateTimeInputs('tDueDate', 'tDueTime', null);
   setPickerStatus('todo');
   document.getElementById('taskModal').classList.add('open');
   setTimeout(() => document.getElementById('tTitle').focus(), 350);
@@ -893,6 +1269,7 @@ function openEditTaskModal(id) {
   document.getElementById('taskModalTitle').textContent = 'Edit Task';
   document.getElementById('tTitle').value = t.title;
   document.getElementById('tDesc').value = t.desc || '';
+  setDateTimeInputs('tDueDate', 'tDueTime', t.dueAt ? new Date(t.dueAt) : null);
   setPickerStatus(t.status);
   document.getElementById('taskModal').classList.add('open');
   setTimeout(() => document.getElementById('tTitle').focus(), 350);
@@ -904,18 +1281,39 @@ function saveTask() {
   const title = document.getElementById('tTitle').value.trim();
   if (!title) { document.getElementById('tTitle').style.borderColor = 'var(--danger)'; setTimeout(()=>document.getElementById('tTitle').style.borderColor='',1000); return; }
   const desc = document.getElementById('tDesc').value.trim();
-  if (editingTaskId) {
-    const t = tasks.find(t => t.id === editingTaskId);
-    if (t) { t.title = title; t.desc = desc; t.status = selectedStatus; }
-  } else {
-    tasks.unshift({ id:uid(), title, desc, status:selectedStatus, dateKey:todayKey(), createdAt:Date.now() });
+  const dueAt = readDateTimeInputs('tDueDate', 'tDueTime');
+  const existing = editingTaskId ? tasks.find(t => t.id === editingTaskId) : null;
+  const dueChanged = !existing || (existing.dueAt || null) !== dueAt;
+  if (dueAt && dueChanged && dueAt <= Date.now() && selectedStatus !== 'done') {
+    ['tDueDate','tDueTime'].forEach(id => { const el = document.getElementById(id); el.style.borderColor = 'var(--danger)'; setTimeout(() => el.style.borderColor = '', 1200); });
+    showNotify('⚠️ Reminder time is in the past');
+    return;
   }
-  saveTasks(); render(); closeTaskModal();
-  showNotify(editingTaskId ? '✏️ Task updated' : '✅ Task added');
+  const wasEditing = !!existing;
+  if (existing) {
+    const statusChanged = existing.status !== selectedStatus;
+    existing.title = title; existing.desc = desc; existing.status = selectedStatus;
+    existing.dueAt = dueAt;
+    if (dueAt) existing.dateKey = dateKeyFor(new Date(dueAt));
+    if (!dueAt || selectedStatus === 'done') existing.alarm = 'handled';
+    else if (dueChanged) existing.alarm = 'pending';
+    else if (statusChanged && existing.alarm === 'ringing') existing.alarm = 'handled';
+  } else {
+    tasks.unshift({ id:uid(), title, desc, status:selectedStatus,
+      dateKey: dueAt ? dateKeyFor(new Date(dueAt)) : todayKey(), createdAt:Date.now(),
+      dueAt, alarm: dueAt && selectedStatus !== 'done' ? 'pending' : 'handled' });
+  }
+  saveTasks(); checkAlarms(); render(); closeTaskModal();
+  if (dueAt) requestNotifPerms();
+  showNotify(wasEditing ? '✏️ Task updated' : (dueAt ? '⏰ Task scheduled for ' + formatDue(dueAt) : '✅ Task added'));
 }
 
 function deleteTask(id) { tasks = tasks.filter(t => t.id !== id); saveTasks(); render(); showNotify('🗑️ Task deleted'); }
-function updateStatus(id, status) { const t=tasks.find(t=>t.id===id); if(t){t.status=status; saveTasks(); render();} }
+function updateStatus(id, status) {
+  const t = tasks.find(t => t.id === id); if (!t) return;
+  if (t.status !== status && t.alarm === 'ringing') t.alarm = 'handled';
+  t.status = status; saveTasks(); checkAlarms(); render();
+}
 
 function setPickerStatus(val) {
   selectedStatus = val;
@@ -932,7 +1330,6 @@ function openAddHabitModal() {
   document.getElementById('hDesc').value = '';
   document.getElementById('hRecur').value = 'daily';
   document.getElementById('hTime').value = '08:00';
-  document.getElementById('hWindow').value = '30';
   document.getElementById('habitModal').classList.add('open');
   setTimeout(() => document.getElementById('hTitle').focus(), 350);
 }
@@ -945,7 +1342,6 @@ function openEditHabitModal(id) {
   document.getElementById('hDesc').value = h.desc || '';
   document.getElementById('hRecur').value = h.recur;
   document.getElementById('hTime').value = h.alarmTime;
-  document.getElementById('hWindow').value = h.reminderWindow || 30;
   document.getElementById('habitModal').classList.add('open');
   setTimeout(() => document.getElementById('hTitle').focus(), 350);
 }
@@ -959,16 +1355,23 @@ function saveHabit() {
     title,
     desc: document.getElementById('hDesc').value.trim(),
     recur: document.getElementById('hRecur').value,
-    alarmTime: document.getElementById('hTime').value,
-    reminderWindow: parseInt(document.getElementById('hWindow').value)
+    alarmTime: document.getElementById('hTime').value || '08:00'
   };
+  let id = editingHabitId;
   if (editingHabitId) {
     const h = habits.find(h => h.id === editingHabitId);
     if (h) Object.assign(h, data);
   } else {
-    habits.push({ id:uid(), createdAt:Date.now(), ...data });
+    id = uid();
+    habits.push({ id, createdAt:Date.now(), ...data });
   }
-  saveHabits(); scheduleAllAlarms(); render(); closeHabitModal();
+  // If today's alarm time has already passed, start ringing from the next due day, not right now.
+  const [hh, mm] = data.alarmTime.split(':').map(Number);
+  const fire = new Date(); fire.setHours(hh, mm, 0, 0);
+  if (fire.getTime() <= Date.now()) habitAlarm[id] = { date: todayKey(), skipped: true };
+  else delete habitAlarm[id];
+  saveHabitAlarm();
+  saveHabits(); checkAlarms(); render(); closeHabitModal();
   requestNotifPerms();
   showNotify(editingHabitId ? '✏️ Habit updated' : '🎯 Habit added!');
 }
@@ -976,8 +1379,8 @@ function saveHabit() {
 function deleteHabit(id) {
   habits = habits.filter(h => h.id !== id);
   if (logs[id]) { delete logs[id]; saveLogs(); }
-  clearTimeout(alarmTimeouts[id]); delete alarmTimeouts[id];
-  saveHabits(); render(); showNotify('🗑️ Habit deleted');
+  delete habitAlarm[id]; saveHabitAlarm();
+  saveHabits(); checkAlarms(); render(); showNotify('🗑️ Habit deleted');
 }
 
 /* ════════════════════════════════════════
@@ -1002,6 +1405,10 @@ document.getElementById('fabBtn').addEventListener('click', () => {
 });
 
 document.getElementById('taskCancelBtn').addEventListener('click', closeTaskModal);
+document.getElementById('taskQuickChips').addEventListener('click', e => {
+  const c = e.target.closest('[data-quick]'); if (!c) return;
+  setDateTimeInputs('tDueDate', 'tDueTime', c.dataset.quick === 'clear' ? null : quickTime(c.dataset.quick));
+});
 document.getElementById('taskSaveBtn').addEventListener('click', saveTask);
 document.getElementById('habitCancelBtn').addEventListener('click', closeHabitModal);
 document.getElementById('habitSaveBtn').addEventListener('click', saveHabit);
@@ -1044,13 +1451,24 @@ function setHeaderDate() {
 }
 
 // Check alarms every minute
-setInterval(() => { scheduleAllAlarms(); updatePendingBadge(); }, 60000);
+// Check for due alarms every 5 seconds (browsers slow this down in the background).
+setInterval(checkAlarms, 5000);
+setInterval(() => { setHeaderDate(); updatePendingBadge(); }, 60000);
 
 load();
 setHeaderDate();
-requestNotifPerms();
-scheduleAllAlarms();
 render();
+updateAlarmChip();
+applyWakeLock();
+checkAlarms();
+
+// Opened from a notification button while the app was closed
+(function handleLaunchAction() {
+  const p = new URLSearchParams(location.search).get('alarm');
+  if (!p) return;
+  try { handleExternalAction(JSON.parse(p)); } catch {}
+  history.replaceState(null, '', location.pathname);
+})();
 </script>
 </body>
 </html>
