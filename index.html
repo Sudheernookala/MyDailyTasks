@@ -247,6 +247,8 @@
   .chip:active { transform: scale(0.95); }
   .chip.clear { color: var(--danger); }
   .chip.on { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  .ext-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 9px; }
+  .ext-row .chip { text-decoration: none; font-size: 10px; padding: 6px 10px; }
   .form-hint { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--text-muted); line-height: 1.5; margin-top: 6px; }
 
   /* ALARM EXTRAS */
@@ -534,6 +536,58 @@ function readDateTimeInputs(dateId, timeId) {
   const [hh, mm]  = (tv || '09:00').split(':').map(Number);
   return new Date(y, m - 1, d, hh, mm, 0, 0).getTime();
 }
+
+/* ════════════════════════════════════════
+   LINKS TO PHONE CALENDAR + CLOCK
+   These ring even when Taskr is closed.
+═════════════════════════════════════════ */
+const IS_ANDROID = /Android/i.test(navigator.userAgent);
+
+function gcalStamp(ts) { return new Date(ts).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, ''); }
+
+// Google Calendar "add event" link. Opens the Calendar app on Android if installed.
+function calendarUrl(title, details, startTs, rrule) {
+  const q = new URLSearchParams({
+    action: 'TEMPLATE', text: title,
+    details: (details ? details + '\n\n' : '') + 'Added from Taskr',
+    dates: gcalStamp(startTs) + '/' + gcalStamp(startTs + 30 * 60000)
+  });
+  if (rrule) q.set('recur', 'RRULE:' + rrule);
+  return 'https://calendar.google.com/calendar/render?' + q.toString();
+}
+
+// Android "set alarm" request to the phone's Clock app. Only has hour + minute (no date).
+function clockIntentUrl(title, hour, minute) {
+  return 'intent:#Intent;action=android.intent.action.SET_ALARM;' +
+    'i.android.intent.extra.alarm.HOUR=' + hour + ';' +
+    'i.android.intent.extra.alarm.MINUTES=' + minute + ';' +
+    'S.android.intent.extra.alarm.MESSAGE=' + encodeURIComponent(title.slice(0, 60)) + ';' +
+    'B.android.intent.extra.alarm.SKIP_UI=false;end';
+}
+
+function extLinks(title, details, startTs, rrule) {
+  const d = new Date(startTs);
+  const isFutureDay = dateKeyFor(d) !== todayKey() && startTs > Date.now();
+  return `<div class="ext-row">
+    <a class="chip" href="${esc(calendarUrl(title, details, startTs, rrule))}" target="_blank" rel="noopener">📅 Add to Calendar</a>
+    ${IS_ANDROID ? `<a class="chip clock-link" href="${esc(clockIntentUrl(title, d.getHours(), d.getMinutes()))}"
+        data-future="${isFutureDay && !rrule ? 1 : 0}">⏰ Set phone alarm</a>` : ''}
+  </div>`;
+}
+
+// If the phone refuses to open the Clock app, the page stays visible: tell the user.
+document.addEventListener('click', e => {
+  const a = e.target.closest('.clock-link'); if (!a) return;
+  e.stopPropagation();
+  if (a.dataset.future === '1') showNotify('ℹ️ Clock alarms have no date – it will ring at this time on the next day it comes round');
+  let left = false;
+  const onHide = () => { if (document.hidden) left = true; };
+  document.addEventListener('visibilitychange', onHide);
+  setTimeout(() => {
+    document.removeEventListener('visibilitychange', onHide);
+    if (!left) showNotify('⚠️ Your phone blocked opening the Clock app. Use 📅 Add to Calendar instead.');
+  }, 2000);
+}, true);
 
 function quickTime(q) {
   if (q === 'tom9') { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0); return d; }
@@ -1071,6 +1125,7 @@ function renderTaskCard(t, i) {
       </div>
       <div class="task-time">${formatTime(t.createdAt)}</div>
     </div>
+    ${t.dueAt && t.status !== 'done' ? extLinks(t.title, t.desc, t.dueAt) : ''}
   </div>`;
 }
 
@@ -1134,6 +1189,15 @@ function renderHabitsView() {
   });
 }
 
+function habitExtLinks(h) {
+  const [hh, mm] = h.alarmTime.split(':').map(Number);
+  // Start on the day the habit's schedule is counted from, so repeats line up with Taskr.
+  const start = h.recur === 'daily' ? new Date() : new Date(h.createdAt);
+  start.setHours(hh, mm, 0, 0);
+  const rrule = { daily:'FREQ=DAILY', biweekly:'FREQ=WEEKLY;INTERVAL=2', monthly:'FREQ=MONTHLY' }[h.recur];
+  return extLinks(h.title, h.desc, start.getTime(), rrule);
+}
+
 function renderHabitCard(h, i, state) {
   const streak = getStreak(h);
   const rate14 = getCompletionRate(h, 14);
@@ -1183,6 +1247,7 @@ function renderHabitCard(h, i, state) {
       </button>
       <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text-muted)">${rate14}% (14d)</div>
     </div>
+    ${habitExtLinks(h)}
     <div class="heatmap-wrap">
       <div class="heatmap-label">${heatDays}-day history</div>
       <div class="heatmap-grid">${heatCells}</div>
